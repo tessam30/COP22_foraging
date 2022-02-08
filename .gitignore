@@ -20,6 +20,7 @@
 *.png
 *.twbx
 *.pptx
+*.docx
 
 #nothing from these folders
 AI/*
