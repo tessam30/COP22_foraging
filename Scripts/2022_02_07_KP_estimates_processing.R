@@ -37,13 +37,13 @@
   map(file_list, ~excel_sheets(.x))
   skip = 3
     
-  fsw <- map2_dfr(.x = file_list[-2], .y = list("fsw", "tg"),
+  fsw <- map2_dfr(.x = file_list[-2:-3], .y = list("fsw", "tg"),
                   .f = ~read_excel(.x, skip = skip, sheet = 1) %>% 
                     mutate(pop = .y) %>% 
                     filter(Province != "Total")) %>% 
     mutate(across(matches("_"), as.numeric))
   
-  msm <- map2_dfr(.x = file_list[2], .y = list(1, 3), 
+  msm <- map2_dfr(.x = file_list[3], .y = list(1), 
                   ~read_excel(.x, skip = skip, sheet = .y) %>% 
                     mutate(pop = "msm", sheet = .y) %>% 
                     filter(Province != "Total")) %>% 
@@ -66,10 +66,10 @@
            psnu = District) %>% 
     mutate(pop = case_when(
       pop == "msm" & sheet == 1 ~ "msm simple",
-      pop == "msm" & sheet == 3 ~ "msm stratified",
+      #pop == "msm" & sheet == 3 ~ "msm stratified",
       TRUE ~ pop
       ),
-      pop_fct = fct_relevel(pop, c("tg", "fsw", "msm simple", "msm stratified")),
+      pop_fct = fct_relevel(pop, c("tg", "fsw", "msm simple")),
       psnu = str_replace_all(psnu, "\\*", "")
     ) 
   
@@ -94,6 +94,7 @@
     labs(color = "Key Population") 
   }
   
+  plot_kp()
 
 # SPINDOWN ============================================================================
 
