@@ -36,6 +36,7 @@ library(collapse)
   
   curr_fy <- source_info(msd, return = "fiscal_year")
   curr_qtr <- source_info(msd, return = "quarter")
+  curr_pd <- source_info(msd, return = "period")
   
   df <- read_msd(msd) 
 
@@ -62,6 +63,10 @@ library(collapse)
       )
   }
   
+ data_source <-  glue("{msd_source}\n Created by: {authors} | SI Team")
+ 
+ cust_seq <- seq(0, 1, .25)[2:5]
+ cust_label <- cust_seq %>% percent()
 
 # HTS_TST -----------------------------------------------------------------
 
@@ -108,7 +113,7 @@ library(collapse)
       scale_y_continuous(labels = comma) +
     labs(title = "HTS_TST_POS QUARTERLY ACHIEVEMENT",
          subtitle = "Provinces sorted by HTS_TST_POS targets",
-         caption = glue("{msd_source}\n Created by: {authors} | SI Team"))
+         caption = data_source)
   
 
 # HTS VOLUME BY POSITIVITY ------------------------------------------------
@@ -126,6 +131,8 @@ library(collapse)
    spread(indicator, results) %>% 
    mutate(positivity = HTS_TST_POS/HTS_TST) 
  
+ 
+ 
  df_hts_trend <- 
    df_hts_sex %>% 
    group_by(period) %>% 
@@ -133,20 +140,26 @@ library(collapse)
    mutate(positivity = HTS_TST_POS/HTS_TST)
    
    
-   
+   df_hts_sex %>% 
    ggplot(aes(x = period, y = HTS_TST_POS, fill = ifelse(sex == "Male", genoa, moody_blue))) +
    geom_bar(position = "dodge", stat = "identity", ) +
    scale_fill_identity() +
    ggnewscale::new_scale_fill() +
    geom_label(aes(x = period, y = positivity*1e4, label = percent(positivity, 1)), 
               position = position_dodge(width = 1)) +
-   si_style_ygrid()
+   si_style_ygrid() +
+     labs(title = "HTS_TST_POS volume by sex",
+          subtitle = "Positivity shown as a percent by sex and period.",
+          caption = data_source)
  
  # HTS by MODALITY\
  df_hts_mod <- 
    df %>% 
    filter(indicator %in% c("HTS_TST_POS"),
-          standardizeddisaggregate == "Modality/Age/Sex/Result") %>% 
+          standardizeddisaggregate == "Modality/Age/Sex/Result") 
+ 
+ df_hts_mod_agg <- 
+   df_hts_mod %>% 
     mutate(modality = case_when(
       str_detect(modality, "Index") ~ "Index",
      str_detect(modality, "(PITC|Inpat)") ~ "Other PITC",
@@ -159,17 +172,68 @@ library(collapse)
    mutate(share = results / sum(results)) %>% arrange(period)
  
  
-  df_hts_mod %>% 
+ df_hts_mod_agg %>% 
     ungroup() %>% 
     mutate(modality = fct_relevel(modality, "Other", "Other PITC", "Index")) %>% 
     ggplot(aes(x = period, y = share, fill = modality)) +
     geom_bar(stat = "identity", alpha = 0.85) +
     geom_text(aes(label = percent(share, 1)),
                position = position_stack(vjust =0.5)) +
-    scale_y_continuous(labels = percent) +
-    scale_fill_manual(values = c("Other" = trolley_grey_light, "Other PITC" = old_rose, "Index" = denim)) +
-    si_style_ygrid()
-    
+    scale_y_continuous(breaks = cust_seq, labels = cust_label) +
+    scale_fill_manual(values = c("Index" = denim,  "Other PITC" = old_rose, "Other" = trolley_grey_light)) +
+    si_style_ygrid() +
+      coord_cartesian(expand = FALSE) +
+   labs(title = "PEPFAR HTS_TST_POS MODALITY MIX ACROSS OVER TIME",
+        caption = data_source, 
+        x = NULL, y = NULL,
+        fill = "Modality Type")
+   
 
-    
+
+# HTS NEEDED TO TEST ------------------------------------------------------
+  #Number needed to test
+ # HTS by MODALITY\
+ df_hts_nnt <- 
+   df %>% 
+   filter(indicator %in% c("HTS_TST_POS", "HTS_TST"),
+          standardizeddisaggregate == "Modality/Age/Sex/Result", 
+          trendsfine %in% c("15-19", "20-24", "25-29")) %>%
+   group_by(fiscal_year, indicator, modality) %>% 
+   summarise(across(matches("qtr"), sum, na.rm = T)) %>% 
+   reshape_msd(direction = "semi-wide", clean = T, qtrs_keep_cumulative = T) %>%
+   spread(indicator, results) %>% 
+   mutate(NNT = ifelse(HTS_TST_POS >0, HTS_TST/HTS_TST_POS, NA_real_),
+          positivity = 1/NNT) %>% 
+    group_by(period) %>% 
+   arrange(modality, period)
+
+ neg_offset <- -100
+ sz = 12
+ df_hts_nnt %>% 
+   filter(period == curr_pd, modality != "SNS") %>% 
+   mutate(modality = fct_reorder(modality, NNT)) %>% 
+   ggplot(aes(y = modality)) +
+   geom_col(aes(x = NNT), fill = scooter_med) +
+   geom_point(aes(x = neg_offset, color = positivity), size = sz) +
+   #geom_point(aes(x = neg_offset), size = sz, shape = 1, stroke = 0.25, color = "black", alpha = 0.8) +
+   geom_text(aes(x = NNT, label = comma(NNT, 1)), hjust = -0.2, size = 9/.pt, 
+             family = "Source Sans Pro") +
+   scale_color_si(palette = "scooters") +
+   ggnewscale::new_scale_color()+
+   geom_text(aes(x = neg_offset, label = percent(positivity, 1), color = ifelse(positivity >.10, "white", "black")), size = 9/.pt, 
+             family = "Source Sans Pro") +
+   scale_color_identity() +
+   scale_x_continuous(breaks = c(-600, -350, -100, 0, 500, 1000, 1500), labels = c("HTS_TST_POS", "HTS_TST", "Positivity", "", "500", "1000", "1500"), position = "top") +
+   geom_point(aes(x = neg_offset - 250, fill = HTS_TST), shape = 22, size = sz) +
+   scale_fill_si(palette  = "scooters") +
+   geom_text(aes(x = neg_offset - 250, label = label_number_si()(HTS_TST), color = ifelse(HTS_TST > 50000, "white", "black")), 
+             size = 9/.pt, 
+             family = "Source Sans Pro") +
+   ggnewscale::new_scale_fill() +
+   geom_point(aes(x = neg_offset -500, fill = HTS_TST_POS), shape = 22, size = sz) +
+   geom_text(aes(x = neg_offset - 500, label = label_number_si()(HTS_TST_POS), color = ifelse(HTS_TST_POS > 2000, "white", "black")), 
+             size = 9/.pt, 
+             family = "Source Sans Pro") +
+   scale_fill_si(palette  = "denims") +
+   si_style_nolines() 
   
