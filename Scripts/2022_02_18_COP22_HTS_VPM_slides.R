@@ -442,7 +442,60 @@ bottom <-  df_hts_mod_agg %>%
  
  si_save("Images/ZMB_province_HTS_TST_POS_FY21_ACHV_trendscoarse.png", scale = 1.75, height = 3.96, width = 9.59)
  
+
+# HTS_INDEX_POS AS HTS_TST_POS --------------------------------------------
+
+ df_index <- 
+   df %>% 
+   filter(indicator %in% c("HTS_INDEX_NEWPOS", "HTS_TST_POS"),
+          standardizeddisaggregate == "Total Numerator")
  
+ df_index <- indic_collapse(df_index, snu1) %>% 
+   filter(!is.na(results)) %>% 
+   spread(indicator, results) %>% 
+   mutate(pct_pos = HTS_INDEX_NEWPOS/HTS_TST_POS)
+ 
+ df_index_peds <- 
+   df %>% 
+   filter(indicator %in% c("HTS_INDEX_NEWPOS", "HTS_TST_POS"),
+          standardizeddisaggregate %in% c("Modality/Age/Sex/Result", "Age/Sex/Result"),
+          trendscoarse == "<15") 
+ 
+ df_index_peds <- indic_collapse(df_index_peds, snu1) %>% 
+   filter(!is.na(results)) %>% 
+   spread(indicator, results) %>% 
+   mutate(pct_pos = HTS_INDEX_NEWPOS/HTS_TST_POS)
+ 
+ 
+ df_index_peds %>% 
+   filter(snu1 == "PEPFAR") %>% 
+   ungroup() %>% 
+   mutate(snu1 = fct_reorder(str_remove_all(snu1, " Province"), pct_pos, .fun = sum, .desc = T)) %>% 
+   ggplot(aes(x = period, group = snu1)) +
+   geom_area(aes(y = pct_pos), fill = scooter_med, alpha = 0.5)+
+   geom_point(aes(y = pct_pos), color = scooter, size = 6) +
+   geom_line(aes(y = pct_pos), color = scooter, size = 1)+
+   geom_point(aes(y = pct_pos), color = "black", alpha = 0.85, stroke = 0.25 , size = 6,shape = 1) +
+   geom_text(aes(y = pct_pos, label = percent(pct_pos, 1)), size = 12/.pt, family = "Source Sans Pro",
+             vjust = -1.5, hjust = 0.2) +
+   scale_y_continuous(position = "right", expand = c(0, 0.0), breaks = c(0, .25, .5), lim = c(0, 0.75)) +
+   scale_x_discrete(expand = c(0.05, 0.05))+
+   # scale_y_continuous(lim = c(0, 1)) +
+   # scale_x_discrete(labels = c("FY20Q1", "", "", "",
+   #                               "FY21Q1", "", "", "",
+   #                               "FY22Q1")) +
+   si_style(text_scale = 1.5) +
+   labs(x = NULL, y = NULL,
+        title = "PERCENT POSITIVIES VIA ALL INDEX TESTING AMONG PEDS",
+        subtitle = "HTS_INDEX_NEWPOS / HTS_TST_POS",
+        caption = data_source) +
+   theme(axis.text.y =  element_blank()) +
+   facet_wrap(~snu1)
+ 
+ si_save("Images/ZMB_PCT_positives_via_index_PEDS.png", scale = 1.75, height = 3.96, width = 9.59)
+   
+   
+   
   
 # HTS NEEDED TO TEST ------------------------------------------------------
   #Number needed to test
