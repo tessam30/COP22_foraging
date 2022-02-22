@@ -167,13 +167,13 @@ library(collapse)
 
   # VIZ - ACHV by SNU
   # Toggle from ALL TO PEDS
-  df_hts_viz %>% 
+  df_hts_peds_viz %>% 
     filter(snu1 == "PEPFAR") %>% 
       ggplot(aes(x = period)) +
       geom_col(aes(y = targets), fill = trolley_grey_light) +
       geom_col(aes(y = cmlt_result, fill = case_when(
         snu1 == "PEPFAR" & fy == 20 ~ "#5B82D8",
-        snu1 == "PEPFAR" & fy == 21 ~ "#436EC1", 
+        snu1 == "PEPFAR" & fy == 21 ~ "#5B82D8", 
         snu1 == "PEPFAR" & fy == 22 ~ "#074895",
         snu1 != "PEPFAR" & fy == 21 ~ "#228AA8",
         snu1 != "PEPFAR" & fy == 20 ~ "#74CCEC",
@@ -187,9 +187,9 @@ library(collapse)
       facet_wrap(~snu1_order, scales = "free_y")+
       scale_color_identity() +
       scale_fill_identity() +
-      si_style_ygrid(facet_space = 0.5, text_scale = 1.25) +
+      si_style_ygrid(facet_space = 0.5, text_scale = 1.5) +
       scale_y_continuous(labels = comma) +
-    labs(title = "HTS_TST_POS QUARTERLY ACHIEVEMENT <15s",
+    labs(title = "HTS_TST_POS QUARTERLY ACHIEVEMENT FOR PEDS (<15)",
          #subtitle = "Provinces sorted by HTS_TST_POS targets",
          caption = data_source, 
          x = NULL, y = NULL)
@@ -467,7 +467,7 @@ bottom <-  df_hts_mod_agg %>%
    mutate(pct_pos = HTS_INDEX_NEWPOS/HTS_TST_POS)
  
  
- df_index_peds %>% 
+ df_index %>% 
    filter(snu1 == "PEPFAR") %>% 
    ungroup() %>% 
    mutate(snu1 = fct_reorder(str_remove_all(snu1, " Province"), pct_pos, .fun = sum, .desc = T)) %>% 
@@ -503,16 +503,91 @@ bottom <-  df_hts_mod_agg %>%
  df_hts_nnt <- 
    df %>% 
    filter(indicator %in% c("HTS_TST_POS", "HTS_TST"),
+          standardizeddisaggregate == "Modality/Age/Sex/Result") 
+   
+ df_hts_nnt_peds <- 
+   df %>% 
+   filter(indicator %in% c("HTS_TST_POS", "HTS_TST"),
           standardizeddisaggregate == "Modality/Age/Sex/Result", 
-          trendsfine %in% c("15-19", "20-24", "25-29")) %>%
-   group_by(fiscal_year, indicator, modality) %>% 
-   summarise(across(matches("qtr"), sum, na.rm = T)) %>% 
-   reshape_msd(direction = "semi-wide", clean = T, qtrs_keep_cumulative = T) %>%
-   spread(indicator, results) %>% 
-   mutate(NNT = ifelse(HTS_TST_POS >0, HTS_TST/HTS_TST_POS, NA_real_),
-          positivity = 1/NNT) %>% 
-    group_by(period) %>% 
-   arrange(modality, period)
+          ageasentered %in% c("15-19", "20-24")) 
+  
+ 
+ # TOGGLE DF THE FEEDS INTO munging operations BELOW
+ 
+ nnt_calc <- function(df, ...){
+   df %>% 
+   group_by(fiscal_year, indicator, modality, ...) %>% 
+     summarise(across(matches("qtr"), sum, na.rm = T)) %>% 
+     reshape_msd(direction = "semi-wide", clean = T, qtrs_keep_cumulative = T) %>%
+     spread(indicator, results) %>% 
+     mutate(NNT = ifelse(HTS_TST_POS >0, HTS_TST/HTS_TST_POS, NA_real_),
+            `HTS Positivity` = 1/NNT) %>% 
+     group_by(period) %>% 
+     arrange(modality, period) %>% 
+     filter(period == curr_pd) %>% 
+     ungroup() %>% 
+     mutate(modality = fct_reorder(modality, NNT))
+ }
+ 
+ df_viz <-  nnt_calc(df_hts_nnt_peds, ageasentered) %>% 
+   filter(modality != "SNS")
+ 
+
+   df_viz %>% 
+   pivot_longer(HTS_TST:`HTS Positivity`) %>% 
+   mutate(name = fct_relevel(name, c("NNT", "HTS Positivity", "HTS_TST", "HTS_TST_POS")),
+          text_lab = case_when(
+            name == "HTS Positivity" ~ percent(value, 1),
+            TRUE ~ label_number_si()(value)
+            )
+          ) %>% 
+   ggplot(aes(y = modality)) +
+   geom_col(data = . %>% filter(ageasentered == "15-19"), 
+            aes(x = value), 
+            fill = "#afc9f0", 
+            width = 0.25, 
+            position = position_nudge(y = 0.125)) +
+     geom_col(data = . %>% filter(ageasentered != "15-19"), 
+              aes(x = value), 
+              fill = "#f0b6af", 
+              width = 0.25, 
+              position = position_nudge(y = -0.125)) +
+   geom_vline(xintercept = 0, size = 0.25, color = grey90k)+
+   geom_text(data = . %>% filter(ageasentered == "15-19"), 
+             aes(x = value, label = text_lab), 
+             hjust = "inward", 
+             size = 9/.pt, 
+             family = "Source Sans Pro",
+             position = position_nudge(y = 0.12), 
+             color = denim) +
+  geom_text(data = . %>% filter(ageasentered != "15-19"),
+            aes(x = value, label = text_lab), 
+            hjust = "inward", 
+            size = 9/.pt, 
+            family = "Source Sans Pro",
+            position = position_nudge(y = -0.12), 
+            color = old_rose)+
+   facet_wrap(~name, nrow = 1, scales = "free_x", strip.position = "top") +
+    scale_x_continuous(labels = comma) +
+     si_style_xgrid(facet_space = 1, text_scale = 1.5) +
+     labs(x = NULL, y = NULL,
+          title = "FY22 Q1 NUMBER NEEDED TO TEST TO FIND ONE POSITIVE, AGES 15-19 & 20-24", 
+          subtitle = "<span style = 'color:#2057a7;'><b> Ages 15-19 in blue </b></span>
+          <span style = 'color:#c43d4d;'> | <b> Ages 20-24 in red</b></span>",
+          caption = data_source) +
+  theme(plot.subtitle = element_textbox_simple(family = "Source Sans Pro Light"),
+        axis.text.x = element_blank(),
+        strip.text=element_text(hjust = 0.05))
+   
+      si_save("Images/ZMB_NNT_modality_summary_peds.png", scale = 1.75, height = 4.28, width = 9.56)
+   
+   
+   
+ 
+ 
+ 
+ 
+ 
 
  neg_offset <- -100
  sz = 12
@@ -606,4 +681,234 @@ bottom <-  df_hts_mod_agg %>%
    group_by(trendscoarse, sex, snu1, indicator, fiscal_year) %>% 
    summarise(across(matches("qtr"), sum, na.rm = T)) %>% 
    reshape_msd(direction = "semi-wide", clean = T, qtrs_keep_cumulative = T)
+ 
+
+# INDEX TESTING ACROSS TIME -----------------------------------------------
+
+ #aggregate modalities by quarter
+ df_peds_ind <- df %>% 
+   filter(indicator == "HTS_TST_POS",
+          standardizeddisaggregate == "Modality/Age/Sex/Result",
+          trendscoarse == "<15"
+   ) %>% 
+   mutate(mod_type = case_when(
+     str_detect(modality, "Index") ~ "Index",
+     str_detect(modality, "VCT") ~ "VCT",
+     TRUE ~ "All Other")
+   ) %>% 
+   group_by(fiscal_year, mod_type) %>%
+   summarise(across(starts_with("qtr"), sum, na.rm = TRUE)) %>% 
+   ungroup() %>% 
+   reshape_msd(clean = TRUE)  %>% 
+   select(-period_type) %>% 
+   group_by(period) %>% 
+   mutate(contribution = value/sum(value)) %>% 
+   ungroup() %>% 
+   mutate(start = case_when(period == min(period) ~ contribution),
+          end = case_when(period == max(period) ~ contribution)) 
+
+ df_peds_ind %>% 
+   mutate(mod_type = fct_relevel(mod_type, c("All Other",  "VCT", "Index"))) %>% 
+   ggplot(aes(period, value)) +
+   geom_col(alpha = .2, width = 0.75) +
+   geom_col(data = df_peds_ind %>% filter(mod_type == "VCT"), fill = moody_blue, width = 0.5,  position = position_nudge(x = 0.12)) +
+   geom_col(data = df_peds_ind %>% filter(mod_type == "Index"), fill = burnt_sienna, width = 0.5, position = position_nudge(x = -0.12)) +
+   labs(x = NULL, y = NULL,
+        title = glue(""),
+        caption = glue("Source: {msd_source}")) +
+   theme(legend.position = "none") +
+   scale_y_continuous(label = comma) +
+   # scale_x_discrete(labels = c("FY19Q1", "", "", "",
+   #                             "FY20Q1", "", "", "", 
+   #                             "FY21Q1", "", "", "")) +
+   si_style_ygrid(facet_space = 0.5) 
+ si_save("Images/ZMB_peds_index_texting_modality_pos.png", scale = 1.25, height = 5, width = 10) 
+ 
+ 
+ df_peds_ind %>% 
+   mutate(mod_type = fct_relevel(mod_type, c("All Other",  "VCT", "Index"))) %>% 
+   ggplot(aes(period, contribution , group = mod_type, color = mod_type)) +
+   geom_line(size = 1.5) +
+   geom_point(aes(y = start), size = 4, na.rm = TRUE) +
+   geom_point(aes(y = end), shape = 21, stroke = 1.5,
+              size = 4, na.rm = TRUE, fill = "white") +
+   scale_color_manual(values = c("Index" = burnt_sienna, "VCT" = moody_blue, "Other" = grey50k)) +
+   scale_fill_manual(values = c("Index" = burnt_sienna, "VCT" = moody_blue, "Other" = grey50k)) +
+   geom_text(aes(y = end, label = mod_type), hjust = -0.25, size = 14/.pt) +
+   expand_limits(y = 0) +
+   scale_x_discrete(expand = c(0.12, 0.))+
+   scale_y_continuous(label = percent_format(1)) +
+   si_style_ygrid(text_scale = 1.5) +
+   labs(color = "Testing Modality") +
+   labs(x = NULL, y = NULL, fill = NULL,
+        title = glue("SHARE OF POSITIVE TESTS BY MODALITY FOR PEDS (<15)"),
+        caption = glue("Source: {msd_source}")) +
+   theme(legend.position = "none")
+ si_save("Images/ZMB_peds_index_texting_modality.png", scale = 1.25, height = 4.09, width = 8.53)
+ 
+ 
+ # MDB TABLE ---------------------------------------------------------------
+ 
+ # Time metadata needed  
+ # USE FULL OU data set
+ 
+ library(selfdestructin5)
+ library(fontawesome)
+ load_secrets()
+ 
+ 
+ # Creates a markdown chunk to be inserted as a subtitle with legend pngs
+ legend_chunk_q1 <- gt::md(glue::glue("Legend: Cumulative Indicators <img src= '{legend_q1}' style='height:15px;'>    &emsp; Snapshot (TX_CURR) <img src= '{legend_snapshot}' style='height:15px;'> "))
+ 
+ # Bold Q3 data in the VLS/VLC table
+ bold_column <- function(gt_obj, col){
+   gt_obj %>% 
+     tab_style(
+       style = list(
+         gt::cell_fill(color = "#e6e7e8", alpha = 0.5),
+         gt::cell_text(weight = 700)
+       ),
+       locations = cells_body(
+         columns = {{col}},
+       )
+     )
+ }
+ 
+ # Bold Agency names - used to increase stroke on row group label
+ bold_rowgroup <- function(gt_obj){
+   gt_obj %>% 
+     tab_style(
+       style = list(
+         gt::cell_text(weight = 700)
+       ),
+       locations = cells_row_groups(groups = everything())
+     )
+ }
+ 
+ # Embiggen font size
+ embiggen <- function(gt_obj){
+   gt_obj %>% 
+     tab_options(
+       source_notes.font.size = 10,
+       table.font.size = 15,
+       footnotes.font.size = 10)
+ }
+ 
+ pd <- create_pd(df)
+ msd_source <- source_info(msd)
+ mdb_out <- "Images"
+ 
+ # Main Table
+ mdb_df   <- make_mdb_df(df) %>% filter(indicator != "GEND_GBV")
+ mdb_tbl  <- reshape_mdb_df(mdb_df, pd)  
+ 
+ # Create the treatment data frame needed for derived indicators
+ mdb_df_tx    <- make_mdb_tx_df(df)
+ mdb_tbl_tx   <- reshape_mdb_tx_df(mdb_df_tx, pd)
+ 
+ 
+ # Create and save tables for Zambia for uploading into google presentation
+ create_mdb(mdb_tbl, ou = "Zambia", type = "main", pd, msd_source, legend = legend_chunk_q1) %>% 
+   embiggen() %>% 
+   bold_rowgroup(.) %>% 
+   cols_hide(columns = matches("past")) %>% 
+   gtsave(., path = mdb_out, filename = glue::glue("{pd}_Zambia_KEY_INDICATORS_MD.png"))
+ 
+ create_mdb(mdb_tbl_tx, ou = "Zambia", type = "treatment", pd, msd_source) %>% 
+   bold_column(., Q1) %>% 
+   bold_rowgroup(.) %>% 
+   embiggen() %>% 
+   gtsave(., path = mdb_out, filename = glue::glue("{pd}_Zambia_MMD_VL_MD.png"))
+
+# # PEDS PULLS ------------------------------------------------------------
+# Trend analysis of (last 5-6 quarters?)
+ 
+ # HTS TST 
+ # HTS TST POS
+ # TX CURR
+ # NET NEW
+ # VLC
+ # VLS
+ # 
+ # by IP for 15-19 and then 20-24
+ 
+ df %>% 
+   filter(indicator %in% c("HTS_TST", "HTS_TST_POS", "TX_CURR", "TX_NEW", "TX_NET_NEW", "TX_PVLS"), 
+          ageasentered %in% c("15-19", "20-24")) %>% 
+   count(indicator, standardizeddisaggregate) %>% prinf()
+ 
+ create_cmlt2 <- function(df, ...){
+    df %>% 
+       group_by(fy, ...) %>% 
+       mutate(cmlt_result = case_when(
+                    indicator %in% snapshot_ind ~ results,
+                 TRUE ~ cumsum(results))
+       ) %>% 
+       ungroup() %>% 
+       mutate(achv = (cmlt_result/targets), 
+              mech_order = fct_reorder(paste0(mech_name, "-", mech_code), targets, .desc = T),
+       )
+ }
+ 
+ df_mech_youth <- df %>% 
+   filter(indicator %in% c("HTS_TST", "HTS_TST_POS", "TX_CURR", "TX_NEW", "TX_NET_NEW", "TX_PVLS"), 
+          ageasentered %in% c("15-19", "20-24"),
+          standardizeddisaggregate %in% c("Modality/Age/Sex/Result", "Age/Sex/HIVStatus", "Age/Sex/Indication/HIVStatus"),
+          mech_name != "Dedup") %>% 
+    mutate(indicator = ifelse(numeratordenom == "D", paste0(indicator, "_D"), indicator)) %>% 
+    group_by(ageasentered, indicator, fiscal_year, mech_name, mech_code) %>% 
+    summarise(across(matches("qtr|targ"), sum, na.rm = T)) %>% 
+    reshape_msd(direction = "semi-wide") %>% 
+    fill_targets(mech_name, mech_code, ageasentered, indicator)  %>% 
+    create_cmlt2(mech_name, mech_code, ageasentered, indicator) 
+ 
+ write_csv(df_mech_youth, "Dataout/ZMB_15_24_indicators_by_mech.csv")
+
+   mech_trends <- function(fltr_var){
+     df_mech_youth %>% 
+           filter(indicator == fltr_var, 
+                  period %in% c("FY20Q4", "FY21Q1", "FY21Q2", "FY21Q3", "FY21Q4", "FY22Q1")) %>% 
+       ggplot(aes(x = period)) +
+       geom_line(aes(y = results, group = ageasentered, color = ageasentered)) +
+       geom_point(aes(y = results, group = ageasentered, color = ageasentered), shape = 19) +
+       scale_color_manual(values = c("15-19" = golden_sand, "20-24" = denim)) +
+       facet_wrap(~mech_order, labeller = as_labeller(label_wrap_gen(35))) +
+       si_style(facet_space = 0.5) +
+       scale_y_continuous(labels = comma) +
+       labs(title = glue("{fltr_var} QUARTERLY RESULTS BY MECH"), color = "Age group")
+   }
+   mech_trends("HTS_TST_POS")
    
+   mech_list <- df_mech_youth %>% distinct(indicator) %>% pull()        
+   
+   map(mech_list, ~mech_trends(.x) %>% 
+          si_save(filename = glue("Images/{.x}_quarterly_results_by_mechanism.png"), scale = 1.5))
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ df_mech_youth %>% 
+    mutate(mech = paste0(mech_name, "-", mech_code)) %>% 
+    filter(indicator == "HTS_TST") %>% 
+    ggplot(aes(y = mech, x = period)) +
+    geom_tile(aes(fill = achv), color =  "white") +
+    geom_text(aes(label = percent(achv, 1), color = ifelse(achv > 1, "white", grey90k)), size = 8/.pt) +
+    scale_fill_si(palette = "genoas", oob=scales::squish, limits = c(0, 2)) +
+    facet_wrap(~ageasentered) +
+    scale_color_identity() +
+    si_style()
+ 
+ 
+ 
+
+# NAT_SUBNAT --------------------------------------------------------------
+
+   nat_sub <- merdata %>% return_latest(pattern = "NAT") 
+   subnat_df <- read_msd(nat_sub) %>% 
+      filter(operatingunit == "Zambia")
+ 
