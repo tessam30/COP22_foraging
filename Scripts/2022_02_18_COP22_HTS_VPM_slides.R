@@ -23,13 +23,14 @@ library(ggtext)
 library(googlesheets4)
 library(glue)
 library(collapse)
+library(gt)
 
-
+#TODO: REVIEW AND FUNCTIONALIZE
 
 # PREP DATA AND METADATA --------------------------------------------------
 
   merdata <- glamr::si_path("path_msd")
-  msd <- return_latest(folderpath = merdata, pattern = "20220211_v1_1_Zambia")
+  msd <- return_latest(folderpath = merdata, pattern = "PSNU_IM_FY20-22_20220211_v1_1_Zambia")
 
   authors <- c("Tim Essam")
   
@@ -105,7 +106,6 @@ library(collapse)
       ) %>% 
       group_by(fiscal_year, indicator, ageasentered, sex, snu1) %>%
       summarise(across(matches("targ|cum"), sum, na.rm = TRUE)) %>% 
-      ungroup() %>% 
       filter(ageasentered %ni% c("<10", "<01")) %>% 
       mutate(achv = cumulative/targets,
              new_targ = ifelse(sex == "Female", targets, -targets),
@@ -167,7 +167,7 @@ library(collapse)
 
   # VIZ - ACHV by SNU
   # Toggle from ALL TO PEDS
-  df_hts_peds_viz %>% 
+  df_hts_viz %>% 
     filter(snu1 == "PEPFAR") %>% 
       ggplot(aes(x = period)) +
       geom_col(aes(y = targets), fill = trolley_grey_light) +
@@ -180,7 +180,8 @@ library(collapse)
         TRUE ~ scooter)
           )
         ) +
-      geom_errorbar(aes(ymin = targets, ymax = targets, color = ifelse(achv > 1, "white", grey90k))) +
+     geom_errorbar(aes(ymin = targets, ymax = targets, color = ifelse(achv > 1, "white", "white")), size = 2) +
+      geom_errorbar(aes(ymin = targets, ymax = targets, color = ifelse(achv > 1, old_rose, old_rose)), size = 1) +
       geom_label(data = . %>% filter(period %in% c("FY20Q4", "FY21Q4", "FY22Q1")),
                 aes(y = cmlt_result, label = percent(achv, 1)), 
                     size = 12/.pt, family = "Source Sans Pro", vjust = 0.75) +
@@ -189,7 +190,7 @@ library(collapse)
       scale_fill_identity() +
       si_style_ygrid(facet_space = 0.5, text_scale = 1.5) +
       scale_y_continuous(labels = comma) +
-    labs(title = "HTS_TST_POS QUARTERLY ACHIEVEMENT FOR PEDS (<15)",
+    labs(title = "HTS_TST_POS QUARTERLY ACHIEVEMENT",
          #subtitle = "Provinces sorted by HTS_TST_POS targets",
          caption = data_source, 
          x = NULL, y = NULL)
@@ -208,17 +209,16 @@ library(collapse)
  df_hts_sex <- 
    df_hts_sex %>% 
     group_by(fiscal_year, indicator, sex) %>% 
-    summarise(across(matches("qtr"), sum, na.rm = T)) %>% 
+    summarise(across(matches("qtr"), sum, na.rm = T, .group = "drop")) %>% 
     reshape_msd(direction = "semi-wide", clean = T, qtrs_keep_cumulative = T) %>% 
    spread(indicator, results) %>% 
    mutate(positivity = HTS_TST_POS/HTS_TST) 
  
  
- 
  df_hts_trend <- 
    df_hts_sex %>% 
    group_by(period) %>% 
-   summarise(across(matches("HTS"), sum, na.rm = T)) %>% 
+   summarise(across(matches("HTS"), sum, na.rm = T, .group = "drop")) %>% 
    mutate(positivity = HTS_TST_POS/HTS_TST)
  
  
@@ -389,28 +389,33 @@ bottom <-  df_hts_mod_agg %>%
 
  df_peds_hts <- return_age_disag(df %>% filter(trendscoarse == "<15"), 
                                  disag = "Modality/Age/Sex/Result", 
-                                 indic = c("HTS_TST", "HTS_TST_POS"), 
-                                 )
+                                 indic = c("HTS_TST", "HTS_TST_POS"))
+
+ curr_fy <- 2021L
+ df_5_14_hts <- return_age_disag(df %>% filter(ageasentered %in% c("05-09", "10-14")),  
+                                 disag = "Modality/Age/Sex/Result", 
+                                 indic = c("HTS_TST", "HTS_TST_POS"))
  
  df_hts_age_sex <- return_age_disag(df %>% filter(ageasentered %in% c("35-39", "40-44", "45-49", "50+")),
                                     disag = "Modality/Age/Sex/Result", 
                                     indic = c("HTS_TST", "HTS_TST_POS")) %>% 
    filter(ageasentered != "Unknown Age")
  
-  curr_fy <- 2021L
+curr_fy <- 2021L
  df_ht_sex <- return_age_disag(df %>% mutate(ageasentered = trendscoarse),
                                disag = "Modality/Age/Sex/Result", 
                                indic = c("HTS_TST_POS")) 
  curr_fy <- source_info(msd, return = "fiscal_year")
 
+ df_peds_hts
  
  
  # Custom sort on achievement + cumulative results
  # Change TITLE, INDICATOR, SAVE NAME, 
  df_bars <-  
-   df_ht_sex %>% 
+   df_5_14_hts %>% 
    ungroup() %>% 
-   filter(indicator == "HTS_TST_POS",
+   filter(indicator == "HTS_TST",
           str_detect(snu1, "Military", negate = T),
           ageasentered != "Unknown Age") %>% 
    return_bar_sort()
@@ -435,12 +440,12 @@ bottom <-  df_hts_mod_agg %>%
    scale_x_continuous(labels = comma) +
    si_style_xgrid(facet_space = 1, text_scale = 1.25) +
    labs(x = NULL, y = NULL,
-        title = glue("HTS_TST_POS FOR FY21 BY PROVINCE"),
+        #title = glue("HTS_TST_POS FOR FY21 BY PROVINCE"),
         caption = glue("Source: {msd_source}")) +
    theme(legend.position = "none") +
    coord_cartesian(expand = FALSE)
  
- si_save("Images/ZMB_province_HTS_TST_POS_FY21_ACHV_trendscoarse.png", scale = 1.75, height = 3.96, width = 9.59)
+ si_save("Images/ZMB_province_HTS_TST_FY21_ACHV_trendscoarse.png", scale = 1.5, height = 4.37, width = 9.54)
  
 
 # HTS_INDEX_POS AS HTS_TST_POS --------------------------------------------
@@ -689,8 +694,8 @@ bottom <-  df_hts_mod_agg %>%
  df_peds_ind <- df %>% 
    filter(indicator == "HTS_TST_POS",
           standardizeddisaggregate == "Modality/Age/Sex/Result",
-          trendscoarse == "<15"
-   ) %>% 
+          #trendscoarse == "<15"
+   ) %>% count(modality)
    mutate(mod_type = case_when(
      str_detect(modality, "Index") ~ "Index",
      str_detect(modality, "VCT") ~ "VCT",
@@ -737,14 +742,73 @@ bottom <-  df_hts_mod_agg %>%
    geom_text(aes(y = end, label = mod_type), hjust = -0.25, size = 14/.pt) +
    expand_limits(y = 0) +
    scale_x_discrete(expand = c(0.12, 0.))+
-   scale_y_continuous(label = percent_format(1)) +
+   scale_y_continuous(label = percent_format(1), breaks = seq(0, 0.6, 0.2), limits = c(0, 0.6)) +
    si_style_ygrid(text_scale = 1.5) +
    labs(color = "Testing Modality") +
    labs(x = NULL, y = NULL, fill = NULL,
-        title = glue("SHARE OF POSITIVE TESTS BY MODALITY FOR PEDS (<15)"),
+        title = glue("SHARE OF POSITIVE TESTS BY MODALITY FOR ALL AGES (0-50+)"),
         caption = glue("Source: {msd_source}")) +
    theme(legend.position = "none")
- si_save("Images/ZMB_peds_index_texting_modality.png", scale = 1.25, height = 4.09, width = 8.53)
+ si_save("Images/ZMB_ALL_index_texting_modality.png", scale = 1.25, height = 4.09, width = 8.53)
+ 
+ 
+ # Table of Index Testing
+ df_hts_modality <- df %>% 
+   filter(indicator == "HTS_TST_POS",
+          standardizeddisaggregate == "Modality/Age/Sex/Result",
+   ) %>%
+ mutate(mod_type = case_when(
+   modality =="Index" ~ "Facility - Index",
+   modality == "IndexMod" ~ "Community - Index",
+   modality == "VCT" ~ "Facility - VCT",
+   modality == "VCTMod" ~ "Community - VCT",
+   str_detect(modality, "PITC") ~ "Other - PITC",
+   str_detect(modality, "TBClinic") ~ "Facility - TB Clinic",
+   str_detect(modality, "Inpat") ~ "Facility - Inpatient",
+   str_detect(modality, "Pediatric") ~ "Facility - Pediatric",
+   str_detect(modality, "MobileMod|OtherMod|SNSMod") ~ "Community - Other",
+   TRUE ~ "Facility - Other")
+ ) %>% 
+   group_by(fiscal_year, mod_type) %>%
+   summarise(across(starts_with("cumulative"), sum, na.rm = TRUE)) %>%
+   ungroup() %>% 
+   # ungroup() %>% 
+   # reshape_msd(clean = TRUE)  %>% 
+   # select(-period_type) %>% 
+   group_by(fiscal_year) %>% 
+   mutate(contribution = cumulative/sum(cumulative))
+ 
+ df_hts_modality %>% 
+   select(-cumulative) %>% 
+   spread(fiscal_year, contribution) %>% 
+   rename(`FY21 APR` = `2021`, `FY22 Q1`=`2022`,
+          Modality = mod_type) %>% 
+   arrange(desc(`FY22 Q1`)) %>% 
+   gt() %>% 
+   fmt_percent(columns = 2:4, decimals = 1) %>% 
+   gt::tab_source_note(
+     source_note = gt::md(glue::glue("**Source**: {msd_source}"))
+   ) %>% 
+   tab_header(
+     title = glue::glue("Percent contribution to total positives identified (0-50+)")
+   ) %>% 
+   cols_label(
+     Modality = md("**Modality**"),
+     `FY21 APR` = md("**FY21 APR**"),
+     `FY22 Q1` = md("**FY22 Q1**")
+   ) %>% 
+    cols_hide(2) %>% 
+   tab_style(
+     style = list(
+       cell_fill(color = genoa_light, alpha = 0.5)
+     ),
+     locations = cells_body(
+       columns = everything(),
+       rows = 1:3
+     )
+   ) %>% 
+   
+   gtsave(., filename = "Images/HTS_POS_modality_0_50.png")
  
  
  # MDB TABLE ---------------------------------------------------------------
@@ -906,9 +970,102 @@ bottom <-  df_hts_mod_agg %>%
  
  
 
-# NAT_SUBNAT --------------------------------------------------------------
-
-   nat_sub <- merdata %>% return_latest(pattern = "NAT") 
-   subnat_df <- read_msd(nat_sub) %>% 
-      filter(operatingunit == "Zambia")
+# CASCADE ----------------------------------------------------------------------
+  df_cascade <- df %>% 
+   filter(indicator %in% c("HTS_TST", "HTS_TST_POS", "TX_NEW", "TX_NET_NEW", "TX_CURR", "TX_PVLS"),
+          standardizeddisaggregate %in% c("Total Numerator", "Total Denominator"), 
+          fiscal_year == curr_fy) %>%
+   mutate(indicator = ifelse(numeratordenom == "D", paste0(indicator, "_D"), indicator)) %>% 
+   group_by(indicator, fiscal_year) %>% 
+   summarise(across(matches("targ|qtr"), sum, na.rm = T)) %>% 
+   reshape_msd(direction = "semi-wide", clean = T, qtrs_keep_cumulative = T) %>% 
+   fill_targets() %>% 
+   mutate(achv = ifelse(targets > 0, results/targets, NA_real_),
+          indic_colors = case_when(
+            indicator == "HTS_TST" ~ moody_blue_light,
+            indicator == "HTS_TST_POS" ~ moody_blue,
+            indicator == "TX_NEW" ~ "#535356",
+            indicator == "TX_NET_NEW" ~ "#838484",
+            indicator == "TX_CURR" ~ golden_sand, 
+            indicator == "TX_PVLS_D" ~ scooter_med,
+            indicator == "TX_PVLS" ~ scooter
+            ),
+          cascade = case_when(
+            str_detect(indicator, "HTS") ~ "1st 90",
+            str_detect(indicator, "TX_NE") ~ "2nd 90",
+            TRUE ~ "3rd 90") 
+          ) 
  
+df_cascade <- 
+  df_cascade %>% 
+   bind_rows(df_cascade %>% filter(indicator == "HTS_TST_POS") %>% mutate(cascade = "2nd 90")) %>% 
+   mutate(indicator = fct_relevel(indicator, c("HTS_TST", "HTS_TST_POS", "TX_NEW", 
+                                               "TX_NET_NEW", "TX_CURR", "TX_PVLS_D",
+                                               "TX_PVLS")))
+ 
+ df_cascade %>% 
+   ggplot(aes(x = indicator, fill = indic_colors)) +
+   geom_col(aes(y = targets), fill = grey20k, width = 0.5) +
+   geom_col(aes(y = results), width = 0.5, position = position_nudge(x = 0.1)) +
+   geom_text(aes(y = results, label = comma(results)), size = 12/.pt, vjust = -0.45, 
+             family = "Source Sans Pro", 
+             position = position_nudge(x = 0.1)) +
+   geom_label(aes(y = results, label = percent(achv, 1)), size = 9/.pt, vjust = 1.2, 
+             family = "Source Sans Pro", 
+             position = position_nudge(x = 0.1), fill = "white") +
+   geom_text(data = . %>% filter(indicator == "HTS_TST"), aes(y = targets, label = "FY22 Targets"),
+             size = 12/.pt, family = "Source Sans Pro", hjust = 0.4) +
+   scale_y_continuous(labels = comma, expand = c(0.02, 1)) +
+   scale_fill_identity() +
+   facet_wrap(~cascade, scales = "free") +
+   si_style_ygrid(text_scale = 1.25) +
+   labs(x = NULL, y = NULL, title = "ZAMBIA CASCASE - FY22 Q1 RESULTS TO TARGETS (GRAY BARS)",
+        subtitle = "FY22 Q1 results numbers listed above colored bar, achievement in box below",
+        caption = data_source)
+ 
+ si_save("Images/ZMB_FY22Q1_CASCADE.png", scale = 1.25, height = 3.94, width = 9.59)
+ 
+ 
+
+#  RIGHT TO CARE ----------------------------------------------------------
+
+df_mech <- 
+   df %>% 
+   filter(mech_code == 18304,
+              indicator %in% c("HTS_TST_POS"),
+              standardizeddisaggregate %in% "Modality/Age/Sex/Result", 
+              fiscal_year == 2021, 
+              str_detect(snu1, "Luapula"), 
+              trendsfine != "Unknown Age") %>% 
+   group_by(snu1, trendsfine, sex, indicator, fiscal_year, primepartner, psnu) %>% 
+   summarise(across(matches("targ|cumu"), sum, na.rm = T)) %>% 
+   mutate(achv = ifelse(targets > 0, cumulative / targets, NA_real_),
+          gap = ifelse(targets > 0, targets - cumulative, NA_integer_),
+          snu1 = str_remove_all(snu1, " Province")) %>% 
+   group_by(snu1, sex, psnu) %>% 
+   mutate(total_gap = sum(gap, na.rm = T), 
+          total_targets = sum(targets)) %>% 
+   ungroup()
+ 
+ 
+ mech_name <- df_mech %>% distinct(primepartner) %>% pull()
+ 
+ df_mech %>% 
+   filter(sex == "Female") %>% 
+   ggplot(aes(x = trendsfine)) +
+   geom_col(aes(y = targets), fill = grey20k) +
+   geom_col(aes(y = cumulative), fill = scooter) +
+   geom_errorbar(aes(ymin = targets, ymax = targets, color = ifelse(achv>1, "white", grey90k))) +
+   geom_text(aes(y = -100, label = percent(achv, 1)), size = 9/.pt, family = "Source Sans Pro") +
+   facet_wrap(sex~paste0(psnu, " has a total results gap of ", comma(total_gap, 1)), labeller = as_labeller(label_wrap_gen(50))) +
+   scale_color_identity() +
+   scale_y_continuous(labels = comma) +
+   si_style_ygrid(facet_space = 0.25) +
+   labs(x = "Age bands", y = "", 
+        title = glue("FY21 RESULTS TO TARGETS GAP SUMMARY FOR {mech_name}, DIVIDED BY FEMALES/MALES BY SELECT PROVINCES"),
+        subtitle = "Results show in blue-green and targets in gray. \nPercent achievement shown between bars and age bands.",
+        caption = data_source)
+ si_save("Images/ZMB_right_to_care_summary_Luapula_females.png", scale = 1.75, height = 4.79, width = 10)
+
+
+     
