@@ -348,9 +348,9 @@ bottom <-  df_hts_mod_agg %>%
     mutate(snu1 = str_remove_all(snu1, " Province"))
   
 
- b <-  df_hts_peds_viz %>% 
+ b <-  df_hts_combo_snu1 %>% 
     filter(indicator == "HTS_TST_POS") %>% 
-    mutate(snu1 = fct_reorder(snu1, results),
+    mutate(snu1 = fct_reorder(snu1, achv),
            facet_var = ifelse(snu1 == "PEPFAR", "PEPFAR", "Province")) %>% 
     ggplot(aes(y = snu1)) +
     geom_col(aes(x = targets), fill = trolley_grey_light) +
@@ -361,12 +361,12 @@ bottom <-  df_hts_mod_agg %>%
     si_style_xgrid(facet_space = 0.25, text_scale = 1.25) +
     scale_x_continuous(labels = comma) +
     theme(strip.text = element_blank()) +
-    labs(y = NULL, x = NULL, title = "HTS_TST_POS FY22Q1 RESULTS TO TARGETS PEDS (<15)", 
+    labs(y = NULL, x = NULL, title = "HTS_TST_POS FY22Q1 RESULTS TO TARGETS", 
          caption = data_source)
  
- a <- df_hts_peds_viz %>% 
+ a <- df_hts_combo_snu1 %>% 
    filter(indicator == "HTS_TST") %>% 
-   mutate(snu1 = fct_reorder(snu1, results),
+   mutate(snu1 = fct_reorder(snu1, achv),
           facet_var = ifelse(snu1 == "PEPFAR", "PEPFAR", "Province")) %>% 
    ggplot(aes(y = snu1)) +
    geom_col(aes(x = targets), fill = trolley_grey_light) +
@@ -378,11 +378,11 @@ bottom <-  df_hts_mod_agg %>%
    scale_x_continuous(labels = comma) +
    scale_y_discrete(expand = c(0.1, 0))+
    theme(strip.text = element_blank()) +
-   labs(y = NULL, x = NULL, title = "HTS_TST FY22Q1 RESULTS TO TARGETS PEDS (<15)", 
+   labs(y = NULL, x = NULL, title = "HTS_TST FY22Q1 RESULTS TO TARGETS", 
        )
 
   (a/b)
- si_save("Images/HTS_FY22Q1_summary_by_snu1_UNDER15s.png", scale = 1.5, height = 4.15, width = 9.67)
+ si_save("Images/HTS_FY22Q1_summary_by_snu1.png", scale = 1.5, height = 4.4, width = 9.66)
  
 
 # OFFSET BARS TESTING BY SNUS ---------------------------------------------
@@ -413,9 +413,9 @@ curr_fy <- 2021L
  # Custom sort on achievement + cumulative results
  # Change TITLE, INDICATOR, SAVE NAME, 
  df_bars <-  
-   df_5_14_hts %>% 
+    df_peds_hts %>% 
    ungroup() %>% 
-   filter(indicator == "HTS_TST",
+   filter(indicator == "HTS_TST_POS",
           str_detect(snu1, "Military", negate = T),
           ageasentered != "Unknown Age") %>% 
    return_bar_sort()
@@ -445,7 +445,7 @@ curr_fy <- 2021L
    theme(legend.position = "none") +
    coord_cartesian(expand = FALSE)
  
- si_save("Images/ZMB_province_HTS_TST_FY21_ACHV_trendscoarse.png", scale = 1.5, height = 4.37, width = 9.54)
+ si_save("Images/ZMB_province_HTS_TST_POS_FY21_ACHV_trendscoarse.png", scale = 1.5, height = 4.37, width = 9.54)
  
 
 # HTS_INDEX_POS AS HTS_TST_POS --------------------------------------------
@@ -1066,6 +1066,57 @@ df_mech <-
         subtitle = "Results show in blue-green and targets in gray. \nPercent achievement shown between bars and age bands.",
         caption = data_source)
  si_save("Images/ZMB_right_to_care_summary_Luapula_females.png", scale = 1.75, height = 4.79, width = 10)
+ 
 
+# CAPPED ACHV -------------------------------------------------------------
 
-     
+   #Show where gaps are in HTS_TST_POS ACHV using Adjusted Achv
+   source("Scripts/00_maskless_achv_setup.R")
+ 
+   df_achv <- df %>% 
+    clean_agency() %>% 
+    clean_psnu() %>% 
+    filter(fundingagency != "DEDUP")
+
+  df_achv_htspos <-
+    df_achv %>% 
+    extract_data(df_msd = ., 
+                 operatingunit, snu1, psnu,
+                 fy = 2021, 
+                 ind = "HTS_TST_POS", 
+                 disagg = "Total Numerator", 
+                 agencies = c("USAID", "CDC")) %>% 
+    filter(targets != 0) %>% 
+    decompose_results(operatingunit) %>%
+    calculate_gapshare(operatingunit) %>% 
+    rollup_achv(operatingunit) %>% 
+    mutate(grp_order = fct_reorder(paste(fundingagency, snu1, psnu, sep = "-"), results))
+
+ indic <- df_achv_htspos %>% distinct(indicator) %>% pull()
+ 
+ df_achv_htspos %>% 
+     filter(facet_label == "Unachieved",
+            achv > 0, targets > 200) %>% 
+ ggplot(aes(y = grp_order)) +
+    geom_col(aes(x = targets), fill = trolley_grey_light) +
+    geom_col(aes(x = results), fill = scooter_med) +
+    geom_col(aes(x = rslt_capped), fill = scooter) +
+    geom_errorbar(aes(xmin = targets, xmax = targets,
+                      color = ifelse(!is.na(rslt_surplus),
+                                     "white", NA_character_)), size = 0.5) +
+    geom_col(aes(x = rslt_deficit), fill = old_rose_light) +
+    geom_text(aes(x = results, label = percent(achv, 1)),
+              hjust = -0.5, size = 10/.pt, family = "Source Sans Pro") +
+    geom_vline(xintercept = 0, size = 0.5, color = grey90k) +
+    facet_wrap(facet_label~., scales = "free_y", nrow = 2) +
+    scale_x_continuous(labels = scales::label_number_si())+
+    si_style_xgrid(facet_space = 0.25) +
+    scale_color_identity()  +
+    coord_cartesian(clip = "off", expand = TRUE) +
+    labs(x = NULL, y = NULL, title = glue("AGENCY SHORTFALLS BY PSNU - {indic}"),
+         subtitle = "Pink is shortfall gap, blue is results, gray is targets",
+         caption = data_source)
+ 
+ si_save(glue("Images/ZMB_{indic}_PSNU-AGENCY-HTS_SHORTFALLS_FY21.png"), scale = 1.25)
+ 
+ 
