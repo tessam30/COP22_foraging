@@ -1120,3 +1120,41 @@ df_mech <-
  si_save(glue("Images/ZMB_{indic}_PSNU-AGENCY-HTS_SHORTFALLS_FY21.png"), scale = 1.25)
  
  
+
+# TX_CURR PEDS ------------------------------------------------------------
+
+  df %>% 
+   filter(indicator == "TX_CURR",
+          standardizeddisaggregate == "Age/Sex/HIVStatus",
+          trendsfine %in% c("15-19", "20-24")) %>%
+   group_by(sex, indicator, fiscal_year) %>%
+   summarise(across(matches("targ|qtr"), sum, na.rm = T)) %>% 
+   reshape_msd(direction = "semi-wide", clean = T, qtrs_keep_cumulative = T) %>% 
+   fill_targets(sex) %>% 
+   ungroup() %>% 
+   mutate(age = "15-24", 
+          fill_color = ifelse(sex == "Female", "#877EC9", "#459688"),
+          achv = results/targets,
+          facet_labels = ifelse(sex == "Female", "FEMALES 15-24", "MALES 15-24")) %>% 
+   ggplot(aes(x = period)) +
+   geom_col(aes(y = targets), fill = grey20k) +
+   geom_col(aes(y = results, fill = fill_color)) +
+   geom_hline(yintercept = seq(2e4, 8e4, 2e4), size = 0.1, color = "white", linetype = "dotted") +
+   geom_errorbar(aes(ymin = targets, ymax = targets), linetype = "dotted",
+                 size = 0.5, color = grey90k) +
+   geom_label(aes(y = results, label = percent(achv, 1)), size = 9/.pt, 
+              family = "Source Sans Pro", vjust = -0.1)+
+   geom_text(aes(y = results, label = comma(results, 1)), size = 9/.pt, 
+              family = "Source Sans Pro", vjust = 1.25)+
+   facet_wrap(~facet_labels) +
+   scale_fill_identity() +
+   scale_x_discrete(labels = c("FY20Q1", "", "", "", 
+                               "FY21Q1", "", "", "",
+                               "FY22Q1")) +
+   scale_y_continuous(position = "right", labels = comma) +
+   si_style_nolines() +
+   labs(x = NULL, y = NULL) +
+   si_save("Images/ZMB_TX_CURR_15_24.svg", scale = 1.1)
+ 
+
+ 
