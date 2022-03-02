@@ -1157,4 +1157,50 @@ df_mech <-
    si_save("Images/ZMB_TX_CURR_15_24.svg", scale = 1.1)
  
 
+# HTS TARGETS COP22 -------------------------------------------------------
+
+ # HTS COP22 Targets to Previous years
+ 
+ df <- read_excel("Data/HTS Achievements 02252022.xlsx", sheet = 1)
+ 
+ df %>% 
+   mutate(ymax = ifelse(indicator == "HTS_TST", 2.9e6, 2.25e5), 
+          ymin = 0) %>% 
+   mutate(facet_order = fct_relevel(indicator, "HTS_TST", 
+                                    "HTS_TST_POS",
+                                    "HTS_SELF")) %>% 
+   ggplot(aes(x = period)) +
+   geom_col(aes(y = targets), fill = grey30k, 
+            width = 0.5, position = position_nudge(x = -0.125)) +
+   geom_col(aes(y = results, fill = case_when(
+     period == "FY21" ~ "#2D8073",
+     TRUE ~ "#004137"
+   )), 
+   position = position_nudge(x = 0.125), 
+   width = 0.5) +
+   # geom_errorbar(aes(ymin = targets, ymax = targets, 
+   #                   color = ifelse(targets < results, "white", grey90k)),
+   #                   linesize = 0.25, width = 0.75,
+   #               position = position_nudge(x = .25)) +
+   geom_text(aes(y = results, label = percent(achv, 1)), 
+             size = 10/.pt, family = "Source Sans Pro", vjust = -0.5,
+             position = position_nudge(x = 0.125)) +
+   geom_text(aes(y = targets, label = label_number_si(accuracy = 1.00)(targets)), 
+             size = 10/.pt, family = "Source Sans Pro", vjust = -0.5,
+             position = position_nudge(x = -0.125)) +
+   facet_wrap(~facet_order) +
+   scale_fill_identity() +
+   geom_blank(aes(y = ymin)) +
+   geom_blank(aes(y = ymax)) +
+   scale_y_continuous(labels = label_number_si()) +
+   scale_color_identity() +
+   si_style_ygrid() +
+   coord_cartesian(expand = FALSE) +
+   labs(x = NULL, y = NULL,
+        caption = "Source: COP22 Datapack & FY22Q1i MSD") +
+   theme(axis.text.y = element_blank()) 
+ si_save("Images/HTS_cop22_targets_same_axis.svg", scale = 1.25)
+ 
+ 
+
  
