@@ -109,7 +109,7 @@
         TX_CURR_moh = `...5`
       ) %>%
       filter(str_detect(psnu, "Province|Total", negate = T))
-
+    
     # Pull in psnu shapefile
     # build terrain map to form base
     # terr <- get_raster(path = si_path('path_raster'))
@@ -177,6 +177,25 @@
         TRUE ~ psnu
       )
     )
+  
+  plhiv_peds_count <- read_excel(spectrum, sheet = "PLHIV District ", skip = 3) %>% 
+    rename(psnu = `Row Labels`) %>% 
+    select(Province, psnu, plhiv_youth = 3) %>% 
+    filter(!is.na(Province)) %>%
+    mutate(
+      psnu = str_to_title(psnu),
+      psnu = case_when(
+        psnu == "Senga Hill" ~ "Senga",
+        psnu == "Shangombo" ~ "Shang'ombo",
+        psnu == "Chikankanta" ~ "Chikankata",
+        psnu == "Milengi" ~ "Milenge",
+        psnu == "Chiengi" ~ "Chienge",
+        psnu == "Itezhi-Tezhi" ~ "Itezhi-tezhi",
+        psnu == "Kapiri Mposhi" ~ "Kapiri-Mposhi",
+        psnu == "Mushindano" ~ "Mushindamo",
+        TRUE ~ psnu
+      )
+    )
 
   # Check if psnu names are consistent
   compare_psnu(plhiv_count, pop_est)
@@ -230,6 +249,14 @@
       zmb_pepfar_cov = zmb_tx / zmb_plhiv
     )
 
+  compare_psnu(plhiv_peds_count, vlc_map_df)
+  
+  peds_art <- left_join(vlc_map_df, plhiv_peds_count) %>% 
+    left_join(., tx_df_psnu) %>% 
+    mutate(peds_coverage = peds / plhiv_youth,
+           zmb_peds_cov = sum(peds, na.rm = T) / sum(plhiv_youth, na.rm = T))
+
+    
 
   # Create a psnu unioned border
 
@@ -401,6 +428,36 @@
    inset_element(vlc_hist, left = 0, bottom = 0.75, right = 0.5, top = 1)
  si_save("Graphics/vlc_inset.svg", scale = 1.25)
  
+
+# PEDS COVERAGE -----------------------------------------------------------
+
+ peds_cov_ave <- max(peds_art$zmb_peds_cov)
+ 
+ cov_peds_map <- get_map(peds_art, metric = peds_coverage) +
+   scale_fill_viridis_c(
+     alpha = 0.75, option = "E", direction = -1, labels = percent,
+     na.value = grey20k, guide = "none",
+     limits = c(0, 1.3),
+     oob = scales::squish
+   )
+ 
+ 
+ cov_peds_hist <- get_hist(peds_art, metric = peds_coverage, lines = 13, bins = 40) +
+   scale_x_continuous(
+     labels = percent(seq(0, 1.3, 0.25), 1), breaks = seq(0, 1.3, 0.25),
+     limit = c(0, 1.3)
+   ) +
+   geom_vline(xintercept = peds_cov_ave, size = 0.5, color = grey90k, linetype = "dotted") +
+   scale_fill_viridis_c(
+     alpha = 0.75, option = "E", direction = -1, labels = percent,
+     na.value = grey20k, guide = "none",
+     limit = c(0, 1.3),
+     oob = scales::squish
+   )
+ 
+ cov_peds_map +
+   inset_element(cov_peds_hist, left = 0, bottom = 0.75, right = 0.5, top = 1)
+ si_save("Graphics/art_peds_coverage_inset.svg", scale = 1.25)
 
 # SPINDOWN ============================================================================
   sds_maps %>% 
