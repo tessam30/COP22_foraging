@@ -158,6 +158,14 @@
       TRUE ~ psnu
     ))
 
+  
+  tx_curr_peds <- msd_df %>% 
+    filter(indicator %in% c("TX_CURR"), 
+           standardizeddisaggregate == "Age/Sex/HIVStatus",
+           trendscoarse == "<15") %>% 
+    group_by(fiscal_year, indicator) %>% 
+    summarise(across(matches("cumulative"), sum, na.rm = T))
+  
   # SPECTRUM MUNGING
 
   plhiv_count <- read_excel(spectrum, sheet = "PLHIV District ", skip = 3) %>%
@@ -465,6 +473,12 @@
    write_csv("Dataout/ZMB_COP22_PLHIV_maps.csv")
 
  st_write("GIS/ZMB_COP22_PLHIV_maps.shp", obj = sds_maps)  
+ 
+ 
+ str(peds_art)
+ peds_art %>% 
+   select(-geometry) %>% 
+ write_csv("Dataout/ZMB_COP22_PLHIV_peds.csv")
 
     
     
